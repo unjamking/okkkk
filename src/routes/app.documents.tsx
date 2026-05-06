@@ -206,13 +206,13 @@ function DocumentsPage() {
 }
 
 function DocCard({ doc, onOpen, onDelete }: { doc: Doc; onOpen: () => void; onDelete: () => void }) {
-  const { categories, bumpView } = useStore();
+  const { categories } = useStore();
   const cats = categories.filter((c) => doc.categoryIds.includes(c.id));
   const isImg = doc.type.startsWith("image/");
 
   return (
     <Card className="group overflow-hidden shadow-card transition hover:-translate-y-0.5 hover:shadow-glow">
-      <button onClick={() => { bumpView(doc.id); onOpen(); }} className="block w-full text-left">
+      <button onClick={onOpen} className="block w-full text-left">
         <div className="relative aspect-video overflow-hidden bg-muted">
           {isImg && doc.dataUrl ? (
             <img src={doc.dataUrl} alt={doc.name} className="h-full w-full object-cover transition group-hover:scale-105" />
