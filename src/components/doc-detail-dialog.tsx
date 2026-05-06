@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useStore, formatBytes, type Doc } from "@/lib/store";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
@@ -12,21 +12,22 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
   FileText, ImageIcon, Link2, Copy, Trash2, Plus, History,
-  Users, Tag, RotateCcw, Check,
+  Users, Tag, RotateCcw, Check, Eye, Download, ExternalLink,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
 export function DocDetailDialog({ doc, onClose }: { doc: Doc | null; onClose: () => void }) {
   const {
-    users, categories, auth, updateDoc, addVersion, restoreVersion,
-    createShareLink, removeShareLink, shareWithUsers, unshareUser,
+    users, categories, auth, toggleDocCategory, addVersion, restoreVersion,
+    createShareLink, removeShareLink, shareWithUsers, unshareUser, recordOpen,
   } = useStore();
 
   const [shareSearch, setShareSearch] = useState("");
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [expiry, setExpiry] = useState<number | null>(7);
   const [versionNote, setVersionNote] = useState("");
+  const [opened, setOpened] = useState<string | null>(null);
 
   const candidateUsers = useMemo(() => {
     if (!doc) return [];
@@ -36,15 +37,24 @@ export function DocDetailDialog({ doc, onClose }: { doc: Doc | null; onClose: ()
       .filter((u) => u.name.toLowerCase().includes(shareSearch.toLowerCase()) || u.email.toLowerCase().includes(shareSearch.toLowerCase()));
   }, [users, doc, auth.user?.id, shareSearch]);
 
+  // record open once per document opening
+  useEffect(() => {
+    if (doc && opened !== doc.id) {
+      setOpened(doc.id);
+      recordOpen(doc.id);
+    }
+    if (!doc) setOpened(null);
+  }, [doc, opened, recordOpen]);
+
   if (!doc) return null;
   const isImg = doc.type.startsWith("image/");
+  const isPdf = doc.type === "application/pdf";
+  const isText = doc.type.startsWith("text/") || doc.type === "application/json";
+  const isVideo = doc.type.startsWith("video/");
+  const isAudio = doc.type.startsWith("audio/");
   const sharedUsers = users.filter((u) => doc.sharedUserIds.includes(u.id));
   const currentVersion = doc.versions[0];
-
-  const toggleCategory = (catId: string) => {
-    const has = doc.categoryIds.includes(catId);
-    updateDoc(doc.id, { categoryIds: has ? doc.categoryIds.filter((c) => c !== catId) : [...doc.categoryIds, catId] });
-  };
+  const canPreview = !!doc.dataUrl && (isImg || isPdf || isText || isVideo || isAudio);
 
   const handleShare = () => {
     if (selectedUsers.length === 0) return toast.error("Pick at least one user");
@@ -58,6 +68,17 @@ export function DocDetailDialog({ doc, onClose }: { doc: Doc | null; onClose: ()
     catch { toast.error("Couldn't copy"); }
   };
 
+  const openInNewTab = () => {
+    if (!doc.dataUrl) return;
+    const w = window.open();
+    if (!w) return;
+    if (isImg) {
+      w.document.write(`<title>${doc.name}</title><body style="margin:0;background:#0a0a0a;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="${doc.dataUrl}" style="max-width:100%;max-height:100vh"/></body>`);
+    } else {
+      w.location.href = doc.dataUrl;
+    }
+  };
+
   return (
     <Dialog open={!!doc} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-3xl p-0 overflow-hidden max-h-[90vh] flex flex-col">
@@ -67,24 +88,49 @@ export function DocDetailDialog({ doc, onClose }: { doc: Doc | null; onClose: ()
             <span className="truncate">{doc.name}</span>
           </DialogTitle>
           <DialogDescription>
-            {formatBytes(doc.size)} · uploaded {format(doc.uploadedAt, "PPP")}
+            {formatBytes(doc.size)} · uploaded {format(doc.uploadedAt, "PPP")} · <Eye className="inline h-3 w-3" /> {doc.views}
           </DialogDescription>
         </DialogHeader>
 
         <div className="px-6 overflow-y-auto flex-1">
-          {isImg && doc.dataUrl && (
-            <div className="mt-4 overflow-hidden rounded-xl border border-border bg-muted">
-              <img src={doc.dataUrl} alt={doc.name} className="max-h-72 w-full object-contain" />
-            </div>
-          )}
-
-          <Tabs defaultValue="categories" className="mt-4 pb-6">
-            <TabsList>
+          <Tabs defaultValue="preview" className="mt-4 pb-6">
+            <TabsList className="flex-wrap h-auto">
+              <TabsTrigger value="preview"><Eye className="mr-1 h-3 w-3" />Preview</TabsTrigger>
               <TabsTrigger value="categories"><Tag className="mr-1 h-3 w-3" />Categories</TabsTrigger>
               <TabsTrigger value="share"><Users className="mr-1 h-3 w-3" />Sharing</TabsTrigger>
               <TabsTrigger value="links"><Link2 className="mr-1 h-3 w-3" />Links</TabsTrigger>
               <TabsTrigger value="versions"><History className="mr-1 h-3 w-3" />Versions</TabsTrigger>
             </TabsList>
+
+            <TabsContent value="preview" className="mt-4 space-y-3">
+              {canPreview ? (
+                <>
+                  <div className="overflow-hidden rounded-xl border border-border bg-muted">
+                    {isImg && <img src={doc.dataUrl} alt={doc.name} className="max-h-[60vh] w-full object-contain bg-background" />}
+                    {isPdf && <iframe src={doc.dataUrl} title={doc.name} className="h-[60vh] w-full bg-background" />}
+                    {isText && <TextPreview dataUrl={doc.dataUrl!} />}
+                    {isVideo && <video src={doc.dataUrl} controls className="max-h-[60vh] w-full bg-background" />}
+                    {isAudio && <audio src={doc.dataUrl} controls className="w-full p-4" />}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" onClick={openInNewTab}><ExternalLink className="mr-1 h-3 w-3" />Open in new tab</Button>
+                    <Button variant="outline" size="sm" asChild>
+                      <a href={doc.dataUrl} download={doc.name}><Download className="mr-1 h-3 w-3" />Download</a>
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-xl border border-dashed border-border p-10 text-center">
+                  <FileText className="mx-auto h-8 w-8 text-muted-foreground" />
+                  <p className="mt-3 font-medium">Preview unavailable</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {doc.dataUrl
+                      ? "This file type can't be previewed in the browser."
+                      : "Seed and large files aren't stored locally — re-upload to preview."}
+                  </p>
+                </div>
+              )}
+            </TabsContent>
 
             <TabsContent value="categories" className="mt-4 space-y-3">
               <p className="text-sm text-muted-foreground">Assign one or more categories to this document.</p>
@@ -92,7 +138,7 @@ export function DocDetailDialog({ doc, onClose }: { doc: Doc | null; onClose: ()
                 {categories.map((c) => {
                   const active = doc.categoryIds.includes(c.id);
                   return (
-                    <button key={c.id} onClick={() => toggleCategory(c.id)}
+                    <button key={c.id} onClick={() => toggleDocCategory(doc.id, c.id)}
                       className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition ${
                         active ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-accent"
                       }`}>
@@ -259,5 +305,20 @@ export function DocDetailDialog({ doc, onClose }: { doc: Doc | null; onClose: ()
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function TextPreview({ dataUrl }: { dataUrl: string }) {
+  const [text, setText] = useState<string>("Loading…");
+  useEffect(() => {
+    let cancelled = false;
+    fetch(dataUrl)
+      .then((r) => r.text())
+      .then((t) => { if (!cancelled) setText(t.slice(0, 20000)); })
+      .catch(() => { if (!cancelled) setText("Couldn't read file."); });
+    return () => { cancelled = true; };
+  }, [dataUrl]);
+  return (
+    <pre className="max-h-[60vh] overflow-auto bg-background p-4 text-xs leading-relaxed font-mono whitespace-pre-wrap">{text}</pre>
   );
 }

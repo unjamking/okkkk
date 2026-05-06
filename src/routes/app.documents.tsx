@@ -47,8 +47,14 @@ function DocumentsPage() {
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     for (const file of Array.from(files)) {
+      const readable = file.type.startsWith("image/")
+        || file.type.startsWith("text/")
+        || file.type === "application/pdf"
+        || file.type === "application/json"
+        || file.type.startsWith("video/")
+        || file.type.startsWith("audio/");
       let dataUrl: string | undefined;
-      if (file.type.startsWith("image/") && file.size < 3_000_000) {
+      if (readable && file.size < 6_000_000) {
         dataUrl = await new Promise<string>((resolve) => {
           const reader = new FileReader();
           reader.onload = () => resolve(reader.result as string);
@@ -200,13 +206,13 @@ function DocumentsPage() {
 }
 
 function DocCard({ doc, onOpen, onDelete }: { doc: Doc; onOpen: () => void; onDelete: () => void }) {
-  const { categories, bumpView } = useStore();
+  const { categories } = useStore();
   const cats = categories.filter((c) => doc.categoryIds.includes(c.id));
   const isImg = doc.type.startsWith("image/");
 
   return (
     <Card className="group overflow-hidden shadow-card transition hover:-translate-y-0.5 hover:shadow-glow">
-      <button onClick={() => { bumpView(doc.id); onOpen(); }} className="block w-full text-left">
+      <button onClick={onOpen} className="block w-full text-left">
         <div className="relative aspect-video overflow-hidden bg-muted">
           {isImg && doc.dataUrl ? (
             <img src={doc.dataUrl} alt={doc.name} className="h-full w-full object-cover transition group-hover:scale-105" />
