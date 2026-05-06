@@ -47,8 +47,14 @@ function DocumentsPage() {
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     for (const file of Array.from(files)) {
+      const readable = file.type.startsWith("image/")
+        || file.type.startsWith("text/")
+        || file.type === "application/pdf"
+        || file.type === "application/json"
+        || file.type.startsWith("video/")
+        || file.type.startsWith("audio/");
       let dataUrl: string | undefined;
-      if (file.type.startsWith("image/") && file.size < 3_000_000) {
+      if (readable && file.size < 6_000_000) {
         dataUrl = await new Promise<string>((resolve) => {
           const reader = new FileReader();
           reader.onload = () => resolve(reader.result as string);
