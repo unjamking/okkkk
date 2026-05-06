@@ -11,12 +11,29 @@ export type Doc = {
   size: number;
   uploadedAt: number;
   views: number;
-  dataUrl?: string; // for images
+  dataUrl?: string;
   categoryIds: string[];
   sharedUserIds: string[];
   shareLinks: ShareLink[];
   versions: Version[];
   ownerId: string;
+};
+
+export type ActivityKind =
+  | "upload" | "delete" | "open" | "view"
+  | "share-user" | "unshare-user"
+  | "share-link-create" | "share-link-revoke"
+  | "version-save" | "version-restore"
+  | "category-change" | "login" | "register";
+
+export type Activity = {
+  id: string;
+  kind: ActivityKind;
+  at: number;
+  userId: string;
+  docId?: string;
+  docName?: string;
+  meta?: string;
 };
 
 type Auth = { user: User | null; token: string | null };
@@ -26,17 +43,20 @@ type Ctx = {
   users: User[];
   docs: Doc[];
   categories: Category[];
+  activities: Activity[];
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
   addDoc: (d: Omit<Doc, "id" | "uploadedAt" | "views" | "categoryIds" | "sharedUserIds" | "shareLinks" | "versions" | "ownerId">) => Doc;
   removeDoc: (id: string) => void;
   updateDoc: (id: string, patch: Partial<Doc>) => void;
+  toggleDocCategory: (docId: string, catId: string) => void;
   addCategory: (name: string, color: string) => void;
   removeCategory: (id: string) => void;
   addVersion: (docId: string, note: string) => void;
   restoreVersion: (docId: string, versionId: string) => void;
   bumpView: (docId: string) => void;
+  recordOpen: (docId: string) => void;
   createShareLink: (docId: string, expiresInDays: number | null) => ShareLink;
   removeShareLink: (docId: string, linkId: string) => void;
   shareWithUsers: (docId: string, userIds: string[]) => void;
@@ -45,7 +65,7 @@ type Ctx = {
 
 const StoreContext = createContext<Ctx | null>(null);
 
-const STORAGE_KEY = "docvault.state.v1";
+const STORAGE_KEY = "docvault.state.v2";
 const AUTH_KEY = "docvault.auth.v1";
 
 const seedUsers: User[] = [
@@ -97,15 +117,24 @@ function seedDocs(ownerId: string): Doc[] {
   ];
 }
 
-type Persisted = { users: User[]; docs: Doc[]; categories: Category[] };
+function seedActivities(ownerId: string, docs: Doc[]): Activity[] {
+  return docs.map((d) => ({
+    id: uid(), kind: "upload" as ActivityKind, at: d.uploadedAt, userId: ownerId, docId: d.id, docName: d.name,
+  }));
+}
+
+type Persisted = { users: User[]; docs: Doc[]; categories: Category[]; activities: Activity[] };
 
 function loadState(): Persisted {
-  if (typeof window === "undefined") return { users: seedUsers, docs: [], categories: seedCategories };
+  if (typeof window === "undefined") return { users: seedUsers, docs: [], categories: seedCategories, activities: [] };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { activities: [], ...parsed };
+    }
   } catch {}
-  return { users: seedUsers, docs: [], categories: seedCategories };
+  return { users: seedUsers, docs: [], categories: seedCategories, activities: [] };
 }
 
 function loadAuth(): Auth {
@@ -130,13 +159,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!hydrated) return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch {
+      // storage quota — drop dataUrls and retry
+      try {
+        const trimmed = { ...state, docs: state.docs.map((d) => ({ ...d, dataUrl: undefined })) };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+      } catch {}
+    }
   }, [state, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
     localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
   }, [auth, hydrated]);
+
+  const logActivity = useCallback((a: Omit<Activity, "id" | "at" | "userId">) => {
+    const userId = auth.user?.id;
+    if (!userId) return;
+    setState((s) => ({
+      ...s,
+      activities: [{ id: uid(), at: Date.now(), userId, ...a }, ...s.activities].slice(0, 500),
+    }));
+  }, [auth.user?.id]);
 
   const login = useCallback(async (email: string, _password: string) => {
     await new Promise((r) => setTimeout(r, 400));
@@ -145,8 +191,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       user = { id: uid(), email, name: email.split("@")[0] };
       setState((s) => ({ ...s, users: [...s.users, user!] }));
     }
-    setAuth({ user, token: uid() });
-    setState((s) => (s.docs.some((d) => d.ownerId === user!.id) ? s : { ...s, docs: [...s.docs, ...seedDocs(user!.id)] }));
+    const u = user;
+    setAuth({ user: u, token: uid() });
+    setState((s) => {
+      if (s.docs.some((d) => d.ownerId === u.id)) {
+        return { ...s, activities: [{ id: uid(), at: Date.now(), userId: u.id, kind: "login" }, ...s.activities] };
+      }
+      const newDocs = seedDocs(u.id);
+      return {
+        ...s,
+        docs: [...s.docs, ...newDocs],
+        activities: [
+          { id: uid(), at: Date.now(), userId: u.id, kind: "login" },
+          ...seedActivities(u.id, newDocs),
+          ...s.activities,
+        ],
+      };
+    });
   }, [state.users]);
 
   const register = useCallback(async (name: string, email: string, _password: string) => {
@@ -154,7 +215,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const existing = state.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
     if (existing) throw new Error("An account with that email already exists.");
     const user: User = { id: uid(), email, name };
-    setState((s) => ({ ...s, users: [...s.users, user], docs: [...s.docs, ...seedDocs(user.id)] }));
+    const newDocs = seedDocs(user.id);
+    setState((s) => ({
+      ...s,
+      users: [...s.users, user],
+      docs: [...s.docs, ...newDocs],
+      activities: [
+        { id: uid(), at: Date.now(), userId: user.id, kind: "register" },
+        ...seedActivities(user.id, newDocs),
+        ...s.activities,
+      ],
+    }));
     setAuth({ user, token: uid() });
   }, [state.users]);
 
@@ -168,17 +239,49 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       versions: [{ id: uid(), createdAt: Date.now(), note: "Initial upload", size: d.size }],
       ownerId,
     };
-    setState((s) => ({ ...s, docs: [doc, ...s.docs] }));
+    setState((s) => ({
+      ...s,
+      docs: [doc, ...s.docs],
+      activities: [{ id: uid(), at: Date.now(), userId: ownerId, kind: "upload", docId: doc.id, docName: doc.name }, ...s.activities],
+    }));
     return doc;
   }, [auth.user?.id]);
 
   const removeDoc = useCallback((id: string) => {
-    setState((s) => ({ ...s, docs: s.docs.filter((d) => d.id !== id) }));
-  }, []);
+    setState((s) => {
+      const d = s.docs.find((x) => x.id === id);
+      const userId = auth.user?.id ?? "anon";
+      return {
+        ...s,
+        docs: s.docs.filter((x) => x.id !== id),
+        activities: d ? [{ id: uid(), at: Date.now(), userId, kind: "delete", docId: id, docName: d.name }, ...s.activities] : s.activities,
+      };
+    });
+  }, [auth.user?.id]);
 
   const updateDoc = useCallback((id: string, patch: Partial<Doc>) => {
     setState((s) => ({ ...s, docs: s.docs.map((d) => (d.id === id ? { ...d, ...patch } : d)) }));
   }, []);
+
+  const toggleDocCategory = useCallback((docId: string, catId: string) => {
+    setState((s) => {
+      const doc = s.docs.find((d) => d.id === docId);
+      if (!doc) return s;
+      const has = doc.categoryIds.includes(catId);
+      const cat = s.categories.find((c) => c.id === catId);
+      const userId = auth.user?.id ?? "anon";
+      return {
+        ...s,
+        docs: s.docs.map((d) => d.id === docId
+          ? { ...d, categoryIds: has ? d.categoryIds.filter((c) => c !== catId) : [...d.categoryIds, catId] }
+          : d),
+        activities: [{
+          id: uid(), at: Date.now(), userId, kind: "category-change",
+          docId, docName: doc.name, meta: `${has ? "Removed" : "Added"} category “${cat?.name ?? ""}”`,
+        }, ...s.activities],
+      };
+    });
+  }, [auth.user?.id]);
 
   const addCategory = useCallback((name: string, color: string) => {
     setState((s) => ({ ...s, categories: [...s.categories, { id: uid(), name, color }] }));
@@ -193,36 +296,60 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addVersion = useCallback((docId: string, note: string) => {
-    setState((s) => ({
-      ...s,
-      docs: s.docs.map((d) =>
-        d.id === docId
-          ? { ...d, versions: [{ id: uid(), createdAt: Date.now(), note, size: d.size }, ...d.versions] }
-          : d,
-      ),
-    }));
-  }, []);
+    setState((s) => {
+      const doc = s.docs.find((d) => d.id === docId);
+      const userId = auth.user?.id ?? "anon";
+      return {
+        ...s,
+        docs: s.docs.map((d) =>
+          d.id === docId
+            ? { ...d, versions: [{ id: uid(), createdAt: Date.now(), note, size: d.size }, ...d.versions] }
+            : d,
+        ),
+        activities: doc ? [{ id: uid(), at: Date.now(), userId, kind: "version-save", docId, docName: doc.name, meta: note }, ...s.activities] : s.activities,
+      };
+    });
+  }, [auth.user?.id]);
 
   const restoreVersion = useCallback((docId: string, versionId: string) => {
-    setState((s) => ({
-      ...s,
-      docs: s.docs.map((d) => {
-        if (d.id !== docId) return d;
-        const idx = d.versions.findIndex((v) => v.id === versionId);
-        if (idx < 0) return d;
-        const restored = d.versions[idx];
-        const newVersions = [
-          { id: uid(), createdAt: Date.now(), note: `Restored from ${new Date(restored.createdAt).toLocaleDateString()}`, size: restored.size },
-          ...d.versions,
-        ];
-        return { ...d, versions: newVersions };
-      }),
-    }));
-  }, []);
+    setState((s) => {
+      const doc = s.docs.find((d) => d.id === docId);
+      const userId = auth.user?.id ?? "anon";
+      return {
+        ...s,
+        docs: s.docs.map((d) => {
+          if (d.id !== docId) return d;
+          const idx = d.versions.findIndex((v) => v.id === versionId);
+          if (idx < 0) return d;
+          const restored = d.versions[idx];
+          return {
+            ...d,
+            versions: [
+              { id: uid(), createdAt: Date.now(), note: `Restored from ${new Date(restored.createdAt).toLocaleDateString()}`, size: restored.size },
+              ...d.versions,
+            ],
+          };
+        }),
+        activities: doc ? [{ id: uid(), at: Date.now(), userId, kind: "version-restore", docId, docName: doc.name }, ...s.activities] : s.activities,
+      };
+    });
+  }, [auth.user?.id]);
 
   const bumpView = useCallback((docId: string) => {
     setState((s) => ({ ...s, docs: s.docs.map((d) => (d.id === docId ? { ...d, views: d.views + 1 } : d)) }));
   }, []);
+
+  const recordOpen = useCallback((docId: string) => {
+    setState((s) => {
+      const d = s.docs.find((x) => x.id === docId);
+      const userId = auth.user?.id ?? "anon";
+      return {
+        ...s,
+        docs: s.docs.map((x) => (x.id === docId ? { ...x, views: x.views + 1 } : x)),
+        activities: d ? [{ id: uid(), at: Date.now(), userId, kind: "open", docId, docName: d.name }, ...s.activities] : s.activities,
+      };
+    });
+  }, [auth.user?.id]);
 
   const createShareLink: Ctx["createShareLink"] = useCallback((docId, expiresInDays) => {
     const link: ShareLink = {
@@ -231,44 +358,68 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       expiresAt: expiresInDays ? Date.now() + expiresInDays * 86400000 : null,
       createdAt: Date.now(),
     };
-    setState((s) => ({
-      ...s,
-      docs: s.docs.map((d) => (d.id === docId ? { ...d, shareLinks: [link, ...d.shareLinks] } : d)),
-    }));
+    setState((s) => {
+      const doc = s.docs.find((d) => d.id === docId);
+      const userId = auth.user?.id ?? "anon";
+      return {
+        ...s,
+        docs: s.docs.map((d) => (d.id === docId ? { ...d, shareLinks: [link, ...d.shareLinks] } : d)),
+        activities: doc ? [{ id: uid(), at: Date.now(), userId, kind: "share-link-create", docId, docName: doc.name, meta: expiresInDays ? `Expires in ${expiresInDays}d` : "No expiry" }, ...s.activities] : s.activities,
+      };
+    });
     return link;
-  }, []);
+  }, [auth.user?.id]);
 
   const removeShareLink = useCallback((docId: string, linkId: string) => {
-    setState((s) => ({
-      ...s,
-      docs: s.docs.map((d) => (d.id === docId ? { ...d, shareLinks: d.shareLinks.filter((l) => l.id !== linkId) } : d)),
-    }));
-  }, []);
+    setState((s) => {
+      const doc = s.docs.find((d) => d.id === docId);
+      const userId = auth.user?.id ?? "anon";
+      return {
+        ...s,
+        docs: s.docs.map((d) => (d.id === docId ? { ...d, shareLinks: d.shareLinks.filter((l) => l.id !== linkId) } : d)),
+        activities: doc ? [{ id: uid(), at: Date.now(), userId, kind: "share-link-revoke", docId, docName: doc.name }, ...s.activities] : s.activities,
+      };
+    });
+  }, [auth.user?.id]);
 
   const shareWithUsers = useCallback((docId: string, userIds: string[]) => {
-    setState((s) => ({
-      ...s,
-      docs: s.docs.map((d) =>
-        d.id === docId ? { ...d, sharedUserIds: Array.from(new Set([...d.sharedUserIds, ...userIds])) } : d,
-      ),
-    }));
+    setState((s) => {
+      const doc = s.docs.find((d) => d.id === docId);
+      const userId = auth.user?.id ?? "anon";
+      const names = s.users.filter((u) => userIds.includes(u.id)).map((u) => u.name).join(", ");
+      return {
+        ...s,
+        docs: s.docs.map((d) =>
+          d.id === docId ? { ...d, sharedUserIds: Array.from(new Set([...d.sharedUserIds, ...userIds])) } : d,
+        ),
+        activities: doc ? [{ id: uid(), at: Date.now(), userId, kind: "share-user", docId, docName: doc.name, meta: `Shared with ${names}` }, ...s.activities] : s.activities,
+      };
+    });
   }, []);
 
-  const unshareUser = useCallback((docId: string, userId: string) => {
-    setState((s) => ({
-      ...s,
-      docs: s.docs.map((d) =>
-        d.id === docId ? { ...d, sharedUserIds: d.sharedUserIds.filter((u) => u !== userId) } : d,
-      ),
-    }));
-  }, []);
+  const unshareUser = useCallback((docId: string, targetUserId: string) => {
+    setState((s) => {
+      const doc = s.docs.find((d) => d.id === docId);
+      const target = s.users.find((u) => u.id === targetUserId);
+      const userId = auth.user?.id ?? "anon";
+      return {
+        ...s,
+        docs: s.docs.map((d) =>
+          d.id === docId ? { ...d, sharedUserIds: d.sharedUserIds.filter((u) => u !== targetUserId) } : d,
+        ),
+        activities: doc ? [{ id: uid(), at: Date.now(), userId, kind: "unshare-user", docId, docName: doc.name, meta: `Removed ${target?.name ?? ""}` }, ...s.activities] : s.activities,
+      };
+    });
+  }, [auth.user?.id]);
+
+  void logActivity;
 
   const value = useMemo<Ctx>(() => ({
-    auth, users: state.users, docs: state.docs, categories: state.categories,
-    login, register, logout, addDoc, removeDoc, updateDoc,
-    addCategory, removeCategory, addVersion, restoreVersion, bumpView,
+    auth, users: state.users, docs: state.docs, categories: state.categories, activities: state.activities,
+    login, register, logout, addDoc, removeDoc, updateDoc, toggleDocCategory,
+    addCategory, removeCategory, addVersion, restoreVersion, bumpView, recordOpen,
     createShareLink, removeShareLink, shareWithUsers, unshareUser,
-  }), [auth, state, login, register, logout, addDoc, removeDoc, updateDoc, addCategory, removeCategory, addVersion, restoreVersion, bumpView, createShareLink, removeShareLink, shareWithUsers, unshareUser]);
+  }), [auth, state, login, register, logout, addDoc, removeDoc, updateDoc, toggleDocCategory, addCategory, removeCategory, addVersion, restoreVersion, bumpView, recordOpen, createShareLink, removeShareLink, shareWithUsers, unshareUser]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
