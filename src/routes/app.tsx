@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   LayoutDashboard, FileText, FolderTree, Share2, BarChart3, LogOut,
-  Moon, Sun, Menu, X,
+  Moon, Sun, Menu, X, Activity,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -22,6 +22,7 @@ const nav = [
   { to: "/app/documents", label: "Documents", icon: FileText },
   { to: "/app/categories", label: "Categories", icon: FolderTree },
   { to: "/app/shared", label: "Shared", icon: Share2 },
+  { to: "/app/activity", label: "Activity", icon: Activity },
   { to: "/app/stats", label: "Statistics", icon: BarChart3 },
 ] as const;
 
