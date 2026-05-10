@@ -26,7 +26,8 @@ export type ActivityKind =
   | "share-user" | "unshare-user"
   | "share-link-create" | "share-link-revoke"
   | "version-save" | "version-restore"
-  | "category-change" | "login" | "register";
+  | "category-change" | "login" | "register"
+  | "star" | "unstar" | "trash" | "restore" | "purge" | "profile-update";
 
 export type Activity = {
   id: string;
