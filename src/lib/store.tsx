@@ -367,8 +367,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
     setAuth((a) => (a.user ? { ...a, user: { ...a.user, ...patch } } : a));
   }, [auth.user]);
-    setState((s) => ({ ...s, docs: s.docs.map((d) => (d.id === id ? { ...d, ...patch } : d)) }));
-  }, []);
+
 
   const toggleDocCategory = useCallback((docId: string, catId: string) => {
     setState((s) => {
