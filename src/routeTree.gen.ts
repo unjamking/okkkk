@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
+import { Route as SLinkIdRouteImport } from './routes/s.$linkId'
 import { Route as AppTrashRouteImport } from './routes/app.trash'
 import { Route as AppStatsRouteImport } from './routes/app.stats'
 import { Route as AppSharedRouteImport } from './routes/app.shared'
@@ -47,6 +48,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppRoute,
+} as any)
+const SLinkIdRoute = SLinkIdRouteImport.update({
+  id: '/s/$linkId',
+  path: '/s/$linkId',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AppTrashRoute = AppTrashRouteImport.update({
   id: '/trash',
@@ -102,6 +108,7 @@ export interface FileRoutesByFullPath {
   '/app/shared': typeof AppSharedRoute
   '/app/stats': typeof AppStatsRoute
   '/app/trash': typeof AppTrashRoute
+  '/s/$linkId': typeof SLinkIdRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRoutesByTo {
@@ -116,6 +123,7 @@ export interface FileRoutesByTo {
   '/app/shared': typeof AppSharedRoute
   '/app/stats': typeof AppStatsRoute
   '/app/trash': typeof AppTrashRoute
+  '/s/$linkId': typeof SLinkIdRoute
   '/app': typeof AppIndexRoute
 }
 export interface FileRoutesById {
@@ -132,6 +140,7 @@ export interface FileRoutesById {
   '/app/shared': typeof AppSharedRoute
   '/app/stats': typeof AppStatsRoute
   '/app/trash': typeof AppTrashRoute
+  '/s/$linkId': typeof SLinkIdRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
@@ -149,6 +158,7 @@ export interface FileRouteTypes {
     | '/app/shared'
     | '/app/stats'
     | '/app/trash'
+    | '/s/$linkId'
     | '/app/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -163,6 +173,7 @@ export interface FileRouteTypes {
     | '/app/shared'
     | '/app/stats'
     | '/app/trash'
+    | '/s/$linkId'
     | '/app'
   id:
     | '__root__'
@@ -178,6 +189,7 @@ export interface FileRouteTypes {
     | '/app/shared'
     | '/app/stats'
     | '/app/trash'
+    | '/s/$linkId'
     | '/app/'
   fileRoutesById: FileRoutesById
 }
@@ -186,6 +198,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
   RegisterRoute: typeof RegisterRoute
+  SLinkIdRoute: typeof SLinkIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -224,6 +237,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/'
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/s/$linkId': {
+      id: '/s/$linkId'
+      path: '/s/$linkId'
+      fullPath: '/s/$linkId'
+      preLoaderRoute: typeof SLinkIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/app/trash': {
       id: '/app/trash'
@@ -315,7 +335,17 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
   RegisterRoute: RegisterRoute,
+  SLinkIdRoute: SLinkIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}

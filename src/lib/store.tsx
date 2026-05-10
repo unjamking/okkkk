@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 export type User = { id: string; email: string; name: string; avatar?: string };
 export type Category = { id: string; name: string; color: string };
 export type Version = { id: string; createdAt: number; note: string; size: number };
-export type ShareLink = { id: string; url: string; expiresAt: number | null; createdAt: number };
+export type ShareLink = { id: string; token: string; url: string; expiresAt: number | null; createdAt: number };
 export type Doc = {
   id: string;
   name: string;
@@ -98,6 +98,26 @@ function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
+function svgDataUrl(svg: string) {
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg.replace(/\s+/g, " ").trim())}`;
+}
+
+function docPagePreview(title: string, subtitle: string, hue: number) {
+  const lines = Array.from({ length: 14 }, (_, i) => {
+    const w = 260 + ((i * 71) % 420);
+    return `<rect x="60" y="${320 + i * 38}" width="${w}" height="10" rx="4" fill="hsl(${hue},35%,30%)" fill-opacity="0.35"/>`;
+  }).join("");
+  return svgDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1035" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${hue},75%,96%)"/><stop offset="1" stop-color="hsl(${hue},55%,80%)"/></linearGradient></defs><rect width="800" height="1035" fill="url(#g)"/><rect x="60" y="90" width="680" height="6" fill="hsl(${hue},60%,28%)"/><text x="60" y="190" font-size="56" font-weight="700" fill="hsl(${hue},60%,18%)">${title}</text><text x="60" y="240" font-size="22" fill="hsl(${hue},40%,28%)">${subtitle}</text>${lines}</svg>`);
+}
+
+function brandPreview() {
+  return svgDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" font-family="system-ui,sans-serif"><rect width="1200" height="800" fill="#0b1020"/><text x="60" y="120" font-size="46" font-weight="700" fill="white">Brand Guidelines</text><text x="60" y="165" font-size="20" fill="#a0a8c0">Color palette · v2.4</text><rect x="60" y="240" width="240" height="240" rx="20" fill="#3b82f6"/><rect x="320" y="240" width="240" height="240" rx="20" fill="#8b5cf6"/><rect x="580" y="240" width="240" height="240" rx="20" fill="#ec4899"/><rect x="840" y="240" width="240" height="240" rx="20" fill="#10b981"/><g font-size="16" fill="#a0a8c0"><text x="60" y="520">#3B82F6</text><text x="320" y="520">#8B5CF6</text><text x="580" y="520">#EC4899</text><text x="840" y="520">#10B981</text></g><text x="60" y="660" font-size="32" font-weight="600" fill="white">Aa Bb Cc 123</text><text x="60" y="700" font-size="16" fill="#a0a8c0">Inter · Display 32 / Body 16</text></svg>`);
+}
+
+function teamPhotoPreview() {
+  return svgDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" font-family="system-ui,sans-serif"><defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbcfe8"/><stop offset="0.6" stop-color="#fca5a5"/><stop offset="1" stop-color="#fdba74"/></linearGradient></defs><rect width="1200" height="800" fill="url(#sky)"/><circle cx="900" cy="200" r="120" fill="#fef08a" fill-opacity="0.9"/><path d="M0 600 L200 520 L420 580 L640 480 L860 540 L1200 460 L1200 800 L0 800 Z" fill="#1f2937" fill-opacity="0.55"/><path d="M0 680 L300 620 L520 660 L780 600 L1000 640 L1200 600 L1200 800 L0 800 Z" fill="#0f172a" fill-opacity="0.75"/><g fill="#fff" fill-opacity="0.85"><circle cx="350" cy="710" r="22"/><circle cx="420" cy="720" r="22"/><circle cx="490" cy="710" r="22"/><circle cx="560" cy="725" r="22"/><circle cx="630" cy="715" r="22"/></g><text x="60" y="760" font-size="22" font-weight="600" fill="#fff" fill-opacity="0.9">Team offsite · Lake Tahoe</text></svg>`);
+}
+
 function seedDocs(ownerId: string): Doc[] {
   const now = Date.now();
   return [
@@ -106,24 +126,28 @@ function seedDocs(ownerId: string): Doc[] {
       uploadedAt: now - 86400000, views: 12, categoryIds: ["c1"], sharedUserIds: ["u2"],
       shareLinks: [], versions: [{ id: uid(), createdAt: now - 86400000, note: "Initial", size: 1_240_000 }],
       ownerId,
+      dataUrl: docPagePreview("Q3 Roadmap", "Product · Engineering · Design", 195),
     },
     {
       id: uid(), name: "Brand Guidelines.png", type: "image/png", size: 540_000,
       uploadedAt: now - 3 * 86400000, views: 28, categoryIds: ["c4"], sharedUserIds: ["u3", "u4"],
       shareLinks: [], versions: [{ id: uid(), createdAt: now - 3 * 86400000, note: "v1", size: 540_000 }],
       ownerId,
+      dataUrl: brandPreview(),
     },
     {
       id: uid(), name: "Tax Receipt 2025.pdf", type: "application/pdf", size: 320_000,
       uploadedAt: now - 7 * 86400000, views: 4, categoryIds: ["c3"], sharedUserIds: [],
       shareLinks: [], versions: [{ id: uid(), createdAt: now - 7 * 86400000, note: "Initial", size: 320_000 }],
       ownerId,
+      dataUrl: docPagePreview("Tax Receipt", "Tax year 2025 · paid in full", 155),
     },
     {
       id: uid(), name: "Team Photo.jpg", type: "image/jpeg", size: 890_000,
       uploadedAt: now - 14 * 86400000, views: 19, categoryIds: ["c2", "c1"], sharedUserIds: ["u2", "u3", "u5"],
       shareLinks: [], versions: [{ id: uid(), createdAt: now - 14 * 86400000, note: "Original", size: 890_000 }],
       ownerId,
+      dataUrl: teamPhotoPreview(),
     },
   ];
 }
@@ -136,13 +160,40 @@ function seedActivities(ownerId: string, docs: Doc[]): Activity[] {
 
 type Persisted = { users: User[]; docs: Doc[]; categories: Category[]; activities: Activity[] };
 
+const seedPreviewByName: Record<string, () => string> = {
+  "Q3 Roadmap.pdf": () => docPagePreview("Q3 Roadmap", "Product · Engineering · Design", 195),
+  "Brand Guidelines.png": brandPreview,
+  "Tax Receipt 2025.pdf": () => docPagePreview("Tax Receipt", "Tax year 2025 · paid in full", 155),
+  "Team Photo.jpg": teamPhotoPreview,
+};
+
+function rehydrateSeedPreviews(docs: Doc[]): Doc[] {
+  return docs.map((d) => {
+    if (d.dataUrl) return d;
+    const make = seedPreviewByName[d.name];
+    return make ? { ...d, dataUrl: make() } : d;
+  });
+}
+
+function backfillShareTokens(docs: Doc[]): Doc[] {
+  return docs.map((d) => ({
+    ...d,
+    shareLinks: (d.shareLinks ?? []).map((l) => {
+      if (l.token) return l;
+      const m = l.url?.match(/\/s\/([^/?#]+)/);
+      return { ...l, token: m?.[1] ?? l.id };
+    }),
+  }));
+}
+
 function loadState(): Persisted {
   if (typeof window === "undefined") return { users: seedUsers, docs: [], categories: seedCategories, activities: [] };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      return { activities: [], ...parsed };
+      const merged: Persisted = { activities: [], ...parsed };
+      return { ...merged, docs: backfillShareTokens(rehydrateSeedPreviews(merged.docs ?? [])) };
     }
   } catch {}
   return { users: seedUsers, docs: [], categories: seedCategories, activities: [] };
@@ -458,9 +509,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [auth.user?.id]);
 
   const createShareLink: Ctx["createShareLink"] = useCallback((docId, expiresInDays) => {
+    const token = `${uid()}${uid()}`;
     const link: ShareLink = {
       id: uid(),
-      url: `${typeof window !== "undefined" ? window.location.origin : ""}/s/${uid()}${uid()}`,
+      token,
+      url: `${typeof window !== "undefined" ? window.location.origin : ""}/s/${token}`,
       expiresAt: expiresInDays ? Date.now() + expiresInDays * 86400000 : null,
       createdAt: Date.now(),
     };

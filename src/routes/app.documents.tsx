@@ -81,19 +81,18 @@ function DocumentsPage() {
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     for (const file of Array.from(files)) {
-      const readable = file.type.startsWith("image/")
-        || file.type.startsWith("text/")
-        || file.type === "application/pdf"
-        || file.type === "application/json"
-        || file.type.startsWith("video/")
-        || file.type.startsWith("audio/");
       let dataUrl: string | undefined;
-      if (readable && file.size < 6_000_000) {
-        dataUrl = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.readAsDataURL(file);
-        });
+      if (file.size < 25_000_000) {
+        try {
+          dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(file);
+          });
+        } catch {
+          dataUrl = undefined;
+        }
       }
       addDoc({ name: file.name, type: file.type || "application/octet-stream", size: file.size, dataUrl });
     }

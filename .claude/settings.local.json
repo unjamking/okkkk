@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bun add *)",
+      "PowerShell(bun add mammoth 2>&1)",
+      "PowerShell(npm install mammoth --no-audit --no-fund 2>&1)"
+    ]
+  }
+}

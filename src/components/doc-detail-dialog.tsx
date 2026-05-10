@@ -13,7 +13,23 @@ import { Label } from "@/components/ui/label";
 import {
   FileText, ImageIcon, Link2, Copy, Trash2, Plus, History,
   Users, Tag, RotateCcw, Check, Eye, Download, ExternalLink,
+  FileSpreadsheet, Presentation,
 } from "lucide-react";
+import { DocxPreview, isDocx } from "@/components/docx-preview";
+
+function fileBadge(type: string, name: string) {
+  const ext = name.toLowerCase().split(".").pop() ?? "";
+  if (type.includes("spreadsheet") || type === "text/csv" || ext === "xlsx" || ext === "xls" || ext === "csv") {
+    return { Icon: FileSpreadsheet, label: "Spreadsheet" };
+  }
+  if (type.includes("presentation") || ext === "pptx" || ext === "ppt") {
+    return { Icon: Presentation, label: "Presentation" };
+  }
+  if (type.includes("word") || ext === "docx" || ext === "doc") {
+    return { Icon: FileText, label: "Word document" };
+  }
+  return { Icon: FileText, label: "File" };
+}
 import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
@@ -52,9 +68,11 @@ export function DocDetailDialog({ doc, onClose }: { doc: Doc | null; onClose: ()
   const isText = doc.type.startsWith("text/") || doc.type === "application/json";
   const isVideo = doc.type.startsWith("video/");
   const isAudio = doc.type.startsWith("audio/");
+  const isDocxFile = isDocx(doc.type, doc.name);
   const sharedUsers = users.filter((u) => doc.sharedUserIds.includes(u.id));
   const currentVersion = doc.versions[0];
-  const canPreview = !!doc.dataUrl && (isImg || isPdf || isText || isVideo || isAudio);
+  const canPreview = !!doc.dataUrl && (isImg || isPdf || isText || isVideo || isAudio || isDocxFile);
+  const canOpenInTab = !!doc.dataUrl && (isImg || isPdf || isText || isVideo || isAudio);
 
   const handleShare = () => {
     if (selectedUsers.length === 0) return toast.error("Pick at least one user");
@@ -68,14 +86,41 @@ export function DocDetailDialog({ doc, onClose }: { doc: Doc | null; onClose: ()
     catch { toast.error("Couldn't copy"); }
   };
 
-  const openInNewTab = () => {
+  const toBlobUrl = async (dataUrl: string) => {
+    const blob = await fetch(dataUrl).then((r) => r.blob());
+    return URL.createObjectURL(blob);
+  };
+
+  const openInNewTab = async () => {
     if (!doc.dataUrl) return;
-    const w = window.open();
-    if (!w) return;
-    if (isImg) {
-      w.document.write(`<title>${doc.name}</title><body style="margin:0;background:#0a0a0a;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="${doc.dataUrl}" style="max-width:100%;max-height:100vh"/></body>`);
-    } else {
-      w.location.href = doc.dataUrl;
+    const w = window.open("about:blank", "_blank");
+    if (!w) {
+      toast.error("Pop-up blocked — allow pop-ups for this site");
+      return;
+    }
+    try {
+      const url = await toBlobUrl(doc.dataUrl);
+      w.location.href = url;
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      w.close();
+      toast.error("Couldn't open the file");
+    }
+  };
+
+  const downloadFile = async () => {
+    if (!doc.dataUrl) return;
+    try {
+      const url = await toBlobUrl(doc.dataUrl);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = doc.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      toast.error("Couldn't download the file");
     }
   };
 
@@ -111,25 +156,41 @@ export function DocDetailDialog({ doc, onClose }: { doc: Doc | null; onClose: ()
                     {isText && <TextPreview dataUrl={doc.dataUrl!} />}
                     {isVideo && <video src={doc.dataUrl} controls className="max-h-[60vh] w-full bg-background" />}
                     {isAudio && <audio src={doc.dataUrl} controls className="w-full p-4" />}
+                    {isDocxFile && <DocxPreview dataUrl={doc.dataUrl!} />}
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" onClick={openInNewTab}><ExternalLink className="mr-1 h-3 w-3" />Open in new tab</Button>
-                    <Button variant="outline" size="sm" asChild>
-                      <a href={doc.dataUrl} download={doc.name}><Download className="mr-1 h-3 w-3" />Download</a>
-                    </Button>
+                    {canOpenInTab && (
+                      <Button variant="outline" size="sm" onClick={openInNewTab}><ExternalLink className="mr-1 h-3 w-3" />Open in new tab</Button>
+                    )}
+                    <Button variant="outline" size="sm" onClick={downloadFile}><Download className="mr-1 h-3 w-3" />Download</Button>
                   </div>
                 </>
-              ) : (
-                <div className="rounded-xl border border-dashed border-border p-10 text-center">
-                  <FileText className="mx-auto h-8 w-8 text-muted-foreground" />
-                  <p className="mt-3 font-medium">Preview unavailable</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {doc.dataUrl
-                      ? "This file type can't be previewed in the browser."
-                      : "Seed and large files aren't stored locally — re-upload to preview."}
-                  </p>
-                </div>
-              )}
+              ) : (() => {
+                const { Icon, label } = fileBadge(doc.type, doc.name);
+                return (
+                  <div className="rounded-xl border border-dashed border-border p-10 text-center">
+                    <Icon className="mx-auto h-10 w-10 text-muted-foreground" />
+                    <p className="mt-3 font-medium">{label} · no inline preview</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {doc.dataUrl
+                        ? "This file type can't be rendered in the browser. Download it to open in its native app."
+                        : "This file isn't stored locally — re-upload it to preview or download."}
+                    </p>
+                    {doc.dataUrl && (
+                      <div className="mt-4 flex flex-wrap justify-center gap-2">
+                        <Button variant="outline" size="sm" onClick={downloadFile}>
+                          <Download className="mr-1 h-3 w-3" />Download
+                        </Button>
+                        {canOpenInTab && (
+                          <Button variant="outline" size="sm" onClick={openInNewTab}>
+                            <ExternalLink className="mr-1 h-3 w-3" />Open in new tab
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </TabsContent>
 
             <TabsContent value="categories" className="mt-4 space-y-3">
