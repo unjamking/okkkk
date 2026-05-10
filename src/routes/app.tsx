@@ -1,17 +1,19 @@
 import { createFileRoute, Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useStore } from "@/lib/store";
+import { useStore, formatBytes } from "@/lib/store";
 import { useTheme } from "@/lib/theme";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Progress } from "@/components/ui/progress";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   LayoutDashboard, FileText, FolderTree, Share2, BarChart3, LogOut,
-  Moon, Sun, Menu, X, Activity,
+  Moon, Sun, Menu, X, Activity, Trash2, Settings, Search, HardDrive, User,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { CommandPalette } from "@/components/command-palette";
 
 export const Route = createFileRoute("/app")({
   component: AppLayout,
@@ -24,10 +26,14 @@ const nav = [
   { to: "/app/shared", label: "Shared", icon: Share2 },
   { to: "/app/activity", label: "Activity", icon: Activity },
   { to: "/app/stats", label: "Statistics", icon: BarChart3 },
+  { to: "/app/trash", label: "Trash", icon: Trash2 },
+  { to: "/app/settings", label: "Settings", icon: Settings },
 ] as const;
 
+const STORAGE_QUOTA = 500 * 1024 * 1024; // 500 MB mock quota
+
 function AppLayout() {
-  const { auth, logout } = useStore();
+  const { auth, logout, docs } = useStore();
   const navigate = useNavigate();
   const { theme, toggle } = useTheme();
   const path = useRouterState({ select: (s) => s.location.pathname });
@@ -40,16 +46,27 @@ function AppLayout() {
     if (hydrated && !auth.user) navigate({ to: "/login" });
   }, [hydrated, auth.user, navigate]);
 
+  const usage = useMemo(
+    () => docs.filter((d) => d.ownerId === auth.user?.id && !d.trashedAt).reduce((sum, d) => sum + d.size, 0),
+    [docs, auth.user?.id],
+  );
+  const usagePct = Math.min(100, (usage / STORAGE_QUOTA) * 100);
+  const trashCount = useMemo(
+    () => docs.filter((d) => d.ownerId === auth.user?.id && d.trashedAt).length,
+    [docs, auth.user?.id],
+  );
+
   if (!hydrated || !auth.user) {
     return <div className="min-h-screen flex items-center justify-center bg-background text-muted-foreground">Loading…</div>;
   }
 
   const initials = auth.user.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
+  const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
 
   return (
     <div className="min-h-screen flex bg-background">
       {/* Sidebar */}
-      <aside className={`${open ? "translate-x-0" : "-translate-x-full"} fixed inset-y-0 left-0 z-40 w-64 transform border-r border-sidebar-border bg-sidebar transition-transform md:relative md:translate-x-0`}>
+      <aside className={`${open ? "translate-x-0" : "-translate-x-full"} fixed inset-y-0 left-0 z-40 flex w-64 transform flex-col border-r border-sidebar-border bg-sidebar transition-transform md:relative md:translate-x-0`}>
         <div className="flex h-16 items-center justify-between px-5">
           <Link to="/app/dashboard" className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-primary shadow-glow">
@@ -61,9 +78,10 @@ function AppLayout() {
             <X className="h-4 w-4" />
           </Button>
         </div>
-        <nav className="px-3 py-2 space-y-1">
+        <nav className="px-3 py-2 space-y-1 flex-1 overflow-y-auto">
           {nav.map((item) => {
             const active = path === item.to || path.startsWith(item.to + "/");
+            const badge = item.to === "/app/trash" && trashCount > 0 ? trashCount : null;
             return (
               <Link key={item.to} to={item.to}
                 className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
@@ -72,15 +90,24 @@ function AppLayout() {
                     : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
                 }`}>
                 <item.icon className="h-4 w-4" />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {badge !== null && (
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{badge}</span>
+                )}
               </Link>
             );
           })}
         </nav>
-        <div className="absolute bottom-0 left-0 right-0 p-3">
-          <div className="rounded-xl border border-sidebar-border bg-card/50 p-3 text-xs text-muted-foreground">
-            <p className="font-medium text-foreground">DocVault</p>
-            <p className="mt-0.5">Mock-data preview · everything stays in your browser.</p>
+        <div className="p-3 space-y-3">
+          <div className="rounded-xl border border-sidebar-border bg-card/50 p-3">
+            <div className="flex items-center gap-2 text-xs font-medium">
+              <HardDrive className="h-3.5 w-3.5 text-muted-foreground" />
+              Storage
+            </div>
+            <Progress value={usagePct} className="mt-2 h-1.5" />
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {formatBytes(usage)} of {formatBytes(STORAGE_QUOTA)}
+            </p>
           </div>
         </div>
       </aside>
@@ -96,6 +123,14 @@ function AppLayout() {
             {nav.find((n) => path.startsWith(n.to))?.label ?? "Workspace"}
           </h2>
           <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
+              className="hidden md:inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground transition hover:bg-accent"
+            >
+              <Search className="h-3.5 w-3.5" />
+              <span>Search…</span>
+              <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-mono">{isMac ? "⌘" : "Ctrl"}K</kbd>
+            </button>
             <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
@@ -115,6 +150,9 @@ function AppLayout() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate({ to: "/app/settings" })}>
+                  <User className="mr-2 h-4 w-4" /> Profile & settings
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => { logout(); navigate({ to: "/" }); }}>
                   <LogOut className="mr-2 h-4 w-4" /> Sign out
                 </DropdownMenuItem>
@@ -127,6 +165,8 @@ function AppLayout() {
           <Outlet />
         </main>
       </div>
+
+      <CommandPalette />
     </div>
   );
 }
