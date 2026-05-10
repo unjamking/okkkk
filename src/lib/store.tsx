@@ -52,6 +52,13 @@ type Ctx = {
   logout: () => void;
   addDoc: (d: Omit<Doc, "id" | "uploadedAt" | "views" | "categoryIds" | "sharedUserIds" | "shareLinks" | "versions" | "ownerId">) => Doc;
   removeDoc: (id: string) => void;
+  trashDoc: (id: string) => void;
+  trashDocs: (ids: string[]) => void;
+  restoreDoc: (id: string) => void;
+  purgeDoc: (id: string) => void;
+  emptyTrash: () => void;
+  toggleStar: (id: string) => void;
+  starDocs: (ids: string[], starred: boolean) => void;
   updateDoc: (id: string, patch: Partial<Doc>) => void;
   toggleDocCategory: (docId: string, catId: string) => void;
   addCategory: (name: string, color: string) => void;
@@ -64,6 +71,7 @@ type Ctx = {
   removeShareLink: (docId: string, linkId: string) => void;
   shareWithUsers: (docId: string, userIds: string[]) => void;
   unshareUser: (docId: string, userId: string) => void;
+  updateProfile: (patch: Partial<Pick<User, "name" | "email" | "avatar">>) => void;
 };
 
 const StoreContext = createContext<Ctx | null>(null);
