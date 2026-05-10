@@ -14,8 +14,10 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
+import { Route as AppTrashRouteImport } from './routes/app.trash'
 import { Route as AppStatsRouteImport } from './routes/app.stats'
 import { Route as AppSharedRouteImport } from './routes/app.shared'
+import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as AppDocumentsRouteImport } from './routes/app.documents'
 import { Route as AppDashboardRouteImport } from './routes/app.dashboard'
 import { Route as AppCategoriesRouteImport } from './routes/app.categories'
@@ -46,6 +48,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppTrashRoute = AppTrashRouteImport.update({
+  id: '/trash',
+  path: '/trash',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppStatsRoute = AppStatsRouteImport.update({
   id: '/stats',
   path: '/stats',
@@ -54,6 +61,11 @@ const AppStatsRoute = AppStatsRouteImport.update({
 const AppSharedRoute = AppSharedRouteImport.update({
   id: '/shared',
   path: '/shared',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
 const AppDocumentsRoute = AppDocumentsRouteImport.update({
@@ -86,8 +98,10 @@ export interface FileRoutesByFullPath {
   '/app/categories': typeof AppCategoriesRoute
   '/app/dashboard': typeof AppDashboardRoute
   '/app/documents': typeof AppDocumentsRoute
+  '/app/settings': typeof AppSettingsRoute
   '/app/shared': typeof AppSharedRoute
   '/app/stats': typeof AppStatsRoute
+  '/app/trash': typeof AppTrashRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRoutesByTo {
@@ -98,8 +112,10 @@ export interface FileRoutesByTo {
   '/app/categories': typeof AppCategoriesRoute
   '/app/dashboard': typeof AppDashboardRoute
   '/app/documents': typeof AppDocumentsRoute
+  '/app/settings': typeof AppSettingsRoute
   '/app/shared': typeof AppSharedRoute
   '/app/stats': typeof AppStatsRoute
+  '/app/trash': typeof AppTrashRoute
   '/app': typeof AppIndexRoute
 }
 export interface FileRoutesById {
@@ -112,8 +128,10 @@ export interface FileRoutesById {
   '/app/categories': typeof AppCategoriesRoute
   '/app/dashboard': typeof AppDashboardRoute
   '/app/documents': typeof AppDocumentsRoute
+  '/app/settings': typeof AppSettingsRoute
   '/app/shared': typeof AppSharedRoute
   '/app/stats': typeof AppStatsRoute
+  '/app/trash': typeof AppTrashRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
@@ -127,8 +145,10 @@ export interface FileRouteTypes {
     | '/app/categories'
     | '/app/dashboard'
     | '/app/documents'
+    | '/app/settings'
     | '/app/shared'
     | '/app/stats'
+    | '/app/trash'
     | '/app/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -139,8 +159,10 @@ export interface FileRouteTypes {
     | '/app/categories'
     | '/app/dashboard'
     | '/app/documents'
+    | '/app/settings'
     | '/app/shared'
     | '/app/stats'
+    | '/app/trash'
     | '/app'
   id:
     | '__root__'
@@ -152,8 +174,10 @@ export interface FileRouteTypes {
     | '/app/categories'
     | '/app/dashboard'
     | '/app/documents'
+    | '/app/settings'
     | '/app/shared'
     | '/app/stats'
+    | '/app/trash'
     | '/app/'
   fileRoutesById: FileRoutesById
 }
@@ -201,6 +225,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/trash': {
+      id: '/app/trash'
+      path: '/trash'
+      fullPath: '/app/trash'
+      preLoaderRoute: typeof AppTrashRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/stats': {
       id: '/app/stats'
       path: '/stats'
@@ -213,6 +244,13 @@ declare module '@tanstack/react-router' {
       path: '/shared'
       fullPath: '/app/shared'
       preLoaderRoute: typeof AppSharedRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/settings': {
+      id: '/app/settings'
+      path: '/settings'
+      fullPath: '/app/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/documents': {
@@ -251,8 +289,10 @@ interface AppRouteChildren {
   AppCategoriesRoute: typeof AppCategoriesRoute
   AppDashboardRoute: typeof AppDashboardRoute
   AppDocumentsRoute: typeof AppDocumentsRoute
+  AppSettingsRoute: typeof AppSettingsRoute
   AppSharedRoute: typeof AppSharedRoute
   AppStatsRoute: typeof AppStatsRoute
+  AppTrashRoute: typeof AppTrashRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
@@ -261,8 +301,10 @@ const AppRouteChildren: AppRouteChildren = {
   AppCategoriesRoute: AppCategoriesRoute,
   AppDashboardRoute: AppDashboardRoute,
   AppDocumentsRoute: AppDocumentsRoute,
+  AppSettingsRoute: AppSettingsRoute,
   AppSharedRoute: AppSharedRoute,
   AppStatsRoute: AppStatsRoute,
+  AppTrashRoute: AppTrashRoute,
   AppIndexRoute: AppIndexRoute,
 }
 
@@ -277,3 +319,12 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
