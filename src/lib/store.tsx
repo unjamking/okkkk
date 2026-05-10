@@ -525,7 +525,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     login, register, logout, addDoc, removeDoc, updateDoc, toggleDocCategory,
     addCategory, removeCategory, addVersion, restoreVersion, bumpView, recordOpen,
     createShareLink, removeShareLink, shareWithUsers, unshareUser,
-  }), [auth, state, login, register, logout, addDoc, removeDoc, updateDoc, toggleDocCategory, addCategory, removeCategory, addVersion, restoreVersion, bumpView, recordOpen, createShareLink, removeShareLink, shareWithUsers, unshareUser]);
+    trashDoc, trashDocs, restoreDoc, purgeDoc, emptyTrash, toggleStar, starDocs, updateProfile,
+  }), [auth, state, login, register, logout, addDoc, removeDoc, updateDoc, toggleDocCategory, addCategory, removeCategory, addVersion, restoreVersion, bumpView, recordOpen, createShareLink, removeShareLink, shareWithUsers, unshareUser, trashDoc, trashDocs, restoreDoc, purgeDoc, emptyTrash, toggleStar, starDocs, updateProfile]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
