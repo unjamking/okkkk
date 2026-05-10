@@ -17,6 +17,8 @@ export type Doc = {
   shareLinks: ShareLink[];
   versions: Version[];
   ownerId: string;
+  starred?: boolean;
+  trashedAt?: number | null;
 };
 
 export type ActivityKind =
