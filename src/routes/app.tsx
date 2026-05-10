@@ -43,7 +43,7 @@ function AppLayout() {
   useEffect(() => { setHydrated(true); }, []);
   useEffect(() => { setOpen(false); }, [path]);
   useEffect(() => {
-    if (hydrated && !auth.user) navigate({ to: "/login" });
+    if (hydrated && !auth.user) navigate({ to: "/" });
   }, [hydrated, auth.user, navigate]);
 
   const usage = useMemo(
@@ -84,11 +84,10 @@ function AppLayout() {
             const badge = item.to === "/app/trash" && trashCount > 0 ? trashCount : null;
             return (
               <Link key={item.to} to={item.to}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
-                  active
+                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${active
                     ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
                     : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
-                }`}>
+                  }`}>
                 <item.icon className="h-4 w-4" />
                 <span className="flex-1">{item.label}</span>
                 {badge !== null && (
@@ -145,7 +144,14 @@ function AppLayout() {
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
                   <div className="flex flex-col">
-                    <span className="text-sm font-medium">{auth.user.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{auth.user.name}</span>
+                      {auth.user.role === "admin" && (
+                        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
+                          Admin
+                        </span>
+                      )}
+                    </div>
                     <span className="text-xs text-muted-foreground">{auth.user.email}</span>
                   </div>
                 </DropdownMenuLabel>

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
-export type User = { id: string; email: string; name: string; avatar?: string };
+export type UserRole = "admin" | "user";
+export type User = { id: string; email: string; name: string; avatar?: string; role: UserRole };
 export type Category = { id: string; name: string; color: string };
 export type Version = { id: string; createdAt: number; note: string; size: number };
 export type ShareLink = { id: string; token: string; url: string; expiresAt: number | null; createdAt: number };
@@ -80,11 +81,12 @@ const STORAGE_KEY = "docvault.state.v2";
 const AUTH_KEY = "docvault.auth.v1";
 
 const seedUsers: User[] = [
-  { id: "u1", email: "alex@docvault.io", name: "Alex Rivera" },
-  { id: "u2", email: "maya@docvault.io", name: "Maya Chen" },
-  { id: "u3", email: "jordan@docvault.io", name: "Jordan Lee" },
-  { id: "u4", email: "sam@docvault.io", name: "Sam Patel" },
-  { id: "u5", email: "kai@docvault.io", name: "Kai Tanaka" },
+  { id: "u1", email: "alex@docvault.io", name: "Alex Rivera", role: "user" },
+  { id: "u2", email: "maya@docvault.io", name: "Maya Chen", role: "user" },
+  { id: "u3", email: "jordan@docvault.io", name: "Jordan Lee", role: "user" },
+  { id: "u4", email: "sam@docvault.io", name: "Sam Patel", role: "user" },
+  { id: "u5", email: "kai@docvault.io", name: "Kai Tanaka", role: "user" },
+  { id: "admin", email: "admin@docvault.io", name: "System Admin", role: "admin" },
 ];
 
 const seedCategories: Category[] = [
@@ -195,7 +197,7 @@ function loadState(): Persisted {
       const merged: Persisted = { activities: [], ...parsed };
       return { ...merged, docs: backfillShareTokens(rehydrateSeedPreviews(merged.docs ?? [])) };
     }
-  } catch {}
+  } catch { }
   return { users: seedUsers, docs: [], categories: seedCategories, activities: [] };
 }
 
@@ -204,7 +206,7 @@ function loadAuth(): Auth {
   try {
     const raw = localStorage.getItem(AUTH_KEY);
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch { }
   return { user: null, token: null };
 }
 
@@ -228,7 +230,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         const trimmed = { ...state, docs: state.docs.map((d) => ({ ...d, dataUrl: undefined })) };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
-      } catch {}
+      } catch { }
     }
   }, [state, hydrated]);
 
@@ -250,7 +252,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     await new Promise((r) => setTimeout(r, 400));
     let user = state.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
     if (!user) {
-      user = { id: uid(), email, name: email.split("@")[0] };
+      user = { id: uid(), email, name: email.split("@")[0], role: "user" };
       setState((s) => ({ ...s, users: [...s.users, user!] }));
     }
     const u = user;
@@ -276,7 +278,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     await new Promise((r) => setTimeout(r, 400));
     const existing = state.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
     if (existing) throw new Error("An account with that email already exists.");
-    const user: User = { id: uid(), email, name };
+    const user: User = { id: uid(), email, name, role: "user" };
     const newDocs = seedDocs(user.id);
     setState((s) => ({
       ...s,

@@ -16,11 +16,15 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Upload, FileText, ImageIcon, Search, Trash2, LayoutGrid, List, Eye,
-  Share2, Star, X,
+  Share2, Star, X, Pencil,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { DocDetailDialog } from "@/components/doc-detail-dialog";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 export const Route = createFileRoute("/app/documents")({
   component: DocumentsPage,
@@ -29,7 +33,10 @@ export const Route = createFileRoute("/app/documents")({
 type SortKey = "recent" | "name" | "size" | "views";
 
 function DocumentsPage() {
-  const { docs, auth, addDoc, trashDoc, trashDocs, toggleStar, starDocs, categories } = useStore();
+  const {
+    docs, auth, addDoc, trashDoc, trashDocs, toggleStar, starDocs,
+    categories, updateDoc, addVersion,
+  } = useStore();
   const myDocs = useMemo(
     () => docs.filter((d) => d.ownerId === auth.user?.id && !d.trashedAt),
     [docs, auth.user?.id],
@@ -45,7 +52,10 @@ function DocumentsPage() {
   const [selected, setSelected] = useState<Doc | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [dragOver, setDragOver] = useState(false);
+  const [editingDoc, setEditingDoc] = useState<Doc | null>(null);
+  const [editName, setEditName] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const updateFileRef = useRef<HTMLInputElement>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -115,6 +125,39 @@ function DocumentsPage() {
     toast.success(`Moved ${ids.length} item${ids.length === 1 ? "" : "s"} to trash`);
     clearSelection();
     setConfirmBulk(false);
+  };
+
+  const handleUpdate = async () => {
+    if (!editingDoc) return;
+    const name = editName.trim();
+    if (!name) return toast.error("Name is required");
+
+    const file = updateFileRef.current?.files?.[0];
+    let patch: Partial<Doc> = { name };
+
+    if (file) {
+      const readable = file.type.startsWith("image/")
+        || file.type.startsWith("text/")
+        || file.type === "application/pdf"
+        || file.type === "application/json"
+        || file.type.startsWith("video/")
+        || file.type.startsWith("audio/");
+
+      let dataUrl: string | undefined;
+      if (readable && file.size < 6_000_000) {
+        dataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
+      }
+      patch = { ...patch, type: file.type || "application/octet-stream", size: file.size, dataUrl };
+      addVersion(editingDoc.id, "Updated file content");
+    }
+
+    updateDoc(editingDoc.id, patch);
+    toast.success("Document updated");
+    setEditingDoc(null);
   };
 
   return (
@@ -222,6 +265,7 @@ function DocumentsPage() {
               onOpen={() => setSelected(d)}
               onDelete={() => setConfirmDelete(d)}
               onToggleStar={() => toggleStar(d.id)}
+              onUpdate={() => { setEditingDoc(d); setEditName(d.name); }}
             />
           ))}
         </div>
@@ -256,6 +300,7 @@ function DocumentsPage() {
                     <Button variant="ghost" size="icon" onClick={() => toggleStar(d.id)}>
                       <Star className={`h-4 w-4 ${d.starred ? "fill-current text-chart-4" : ""}`} />
                     </Button>
+                    <Button variant="ghost" size="icon" onClick={() => { setEditingDoc(d); setEditName(d.name); }}><Pencil className="h-4 w-4" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => setSelected(d)}><Eye className="h-4 w-4" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => setConfirmDelete(d)}><Trash2 className="h-4 w-4" /></Button>
                   </td>
@@ -309,13 +354,47 @@ function DocumentsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      <Dialog open={!!editingDoc} onOpenChange={(o) => !o && setEditingDoc(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Update Document</DialogTitle>
+            <DialogDescription>Change the name or replace the file content.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Name</Label>
+              <Input
+                id="edit-name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Document name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-file">Replace File (optional)</Label>
+              <Input
+                id="edit-file"
+                type="file"
+                ref={updateFileRef}
+                className="cursor-pointer"
+              />
+              <p className="text-[10px] text-muted-foreground">Picking a new file will replace the current content and create a new version.</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingDoc(null)}>Cancel</Button>
+            <Button onClick={handleUpdate} className="bg-gradient-primary shadow-glow hover:opacity-90">Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <DocDetailDialog doc={selected} onClose={() => setSelected(null)} />
     </div>
   );
 }
 
 function DocCard({
-  doc, selected, onToggleSelect, onOpen, onDelete, onToggleStar,
+  doc, selected, onToggleSelect, onOpen, onDelete, onToggleStar, onUpdate,
 }: {
   doc: Doc;
   selected: boolean;
@@ -323,6 +402,7 @@ function DocCard({
   onOpen: () => void;
   onDelete: () => void;
   onToggleStar: () => void;
+  onUpdate: () => void;
 }) {
   const { categories } = useStore();
   const cats = categories.filter((c) => doc.categoryIds.includes(c.id));
@@ -376,6 +456,7 @@ function DocCard({
         <div className="mt-3 flex items-center justify-between">
           <span className="text-xs text-muted-foreground inline-flex items-center gap-1"><Eye className="h-3 w-3" />{doc.views}</span>
           <div className="flex">
+            <Button variant="ghost" size="icon" onClick={onUpdate}><Pencil className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" onClick={onOpen}><Eye className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" onClick={onDelete}><Trash2 className="h-4 w-4" /></Button>
           </div>
