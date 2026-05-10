@@ -14,7 +14,7 @@ export const Route = createFileRoute("/app/stats")({
 
 function StatsPage() {
   const { docs, categories, auth } = useStore();
-  const myDocs = docs.filter((d) => d.ownerId === auth.user?.id);
+  const myDocs = docs.filter((d) => d.ownerId === auth.user?.id && !d.trashedAt);
 
   const uploadsByDay = Array.from({ length: 14 }).map((_, i) => {
     const day = subDays(new Date(), 13 - i);

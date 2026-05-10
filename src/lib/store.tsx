@@ -17,6 +17,8 @@ export type Doc = {
   shareLinks: ShareLink[];
   versions: Version[];
   ownerId: string;
+  starred?: boolean;
+  trashedAt?: number | null;
 };
 
 export type ActivityKind =
@@ -24,7 +26,8 @@ export type ActivityKind =
   | "share-user" | "unshare-user"
   | "share-link-create" | "share-link-revoke"
   | "version-save" | "version-restore"
-  | "category-change" | "login" | "register";
+  | "category-change" | "login" | "register"
+  | "star" | "unstar" | "trash" | "restore" | "purge" | "profile-update";
 
 export type Activity = {
   id: string;
@@ -49,6 +52,13 @@ type Ctx = {
   logout: () => void;
   addDoc: (d: Omit<Doc, "id" | "uploadedAt" | "views" | "categoryIds" | "sharedUserIds" | "shareLinks" | "versions" | "ownerId">) => Doc;
   removeDoc: (id: string) => void;
+  trashDoc: (id: string) => void;
+  trashDocs: (ids: string[]) => void;
+  restoreDoc: (id: string) => void;
+  purgeDoc: (id: string) => void;
+  emptyTrash: () => void;
+  toggleStar: (id: string) => void;
+  starDocs: (ids: string[], starred: boolean) => void;
   updateDoc: (id: string, patch: Partial<Doc>) => void;
   toggleDocCategory: (docId: string, catId: string) => void;
   addCategory: (name: string, color: string) => void;
@@ -61,6 +71,7 @@ type Ctx = {
   removeShareLink: (docId: string, linkId: string) => void;
   shareWithUsers: (docId: string, userIds: string[]) => void;
   unshareUser: (docId: string, userId: string) => void;
+  updateProfile: (patch: Partial<Pick<User, "name" | "email" | "avatar">>) => void;
 };
 
 const StoreContext = createContext<Ctx | null>(null);
@@ -259,9 +270,104 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     });
   }, [auth.user?.id]);
 
+  const trashDoc = useCallback((id: string) => {
+    setState((s) => {
+      const d = s.docs.find((x) => x.id === id);
+      const userId = auth.user?.id ?? "anon";
+      return {
+        ...s,
+        docs: s.docs.map((x) => (x.id === id ? { ...x, trashedAt: Date.now() } : x)),
+        activities: d ? [{ id: uid(), at: Date.now(), userId, kind: "trash", docId: id, docName: d.name }, ...s.activities] : s.activities,
+      };
+    });
+  }, [auth.user?.id]);
+
+  const trashDocs = useCallback((ids: string[]) => {
+    setState((s) => {
+      const userId = auth.user?.id ?? "anon";
+      const now = Date.now();
+      const acts: Activity[] = s.docs
+        .filter((d) => ids.includes(d.id))
+        .map((d) => ({ id: uid(), at: now, userId, kind: "trash" as ActivityKind, docId: d.id, docName: d.name }));
+      return {
+        ...s,
+        docs: s.docs.map((x) => (ids.includes(x.id) ? { ...x, trashedAt: now } : x)),
+        activities: [...acts, ...s.activities],
+      };
+    });
+  }, [auth.user?.id]);
+
+  const restoreDoc = useCallback((id: string) => {
+    setState((s) => {
+      const d = s.docs.find((x) => x.id === id);
+      const userId = auth.user?.id ?? "anon";
+      return {
+        ...s,
+        docs: s.docs.map((x) => (x.id === id ? { ...x, trashedAt: null } : x)),
+        activities: d ? [{ id: uid(), at: Date.now(), userId, kind: "restore", docId: id, docName: d.name }, ...s.activities] : s.activities,
+      };
+    });
+  }, [auth.user?.id]);
+
+  const purgeDoc = useCallback((id: string) => {
+    setState((s) => {
+      const d = s.docs.find((x) => x.id === id);
+      const userId = auth.user?.id ?? "anon";
+      return {
+        ...s,
+        docs: s.docs.filter((x) => x.id !== id),
+        activities: d ? [{ id: uid(), at: Date.now(), userId, kind: "purge", docId: id, docName: d.name }, ...s.activities] : s.activities,
+      };
+    });
+  }, [auth.user?.id]);
+
+  const emptyTrash = useCallback(() => {
+    setState((s) => {
+      const userId = auth.user?.id ?? "anon";
+      const now = Date.now();
+      const trashed = s.docs.filter((d) => d.ownerId === userId && d.trashedAt);
+      const acts: Activity[] = trashed.map((d) => ({ id: uid(), at: now, userId, kind: "purge" as ActivityKind, docId: d.id, docName: d.name }));
+      return {
+        ...s,
+        docs: s.docs.filter((d) => !(d.ownerId === userId && d.trashedAt)),
+        activities: [...acts, ...s.activities],
+      };
+    });
+  }, [auth.user?.id]);
+
+  const toggleStar = useCallback((id: string) => {
+    setState((s) => {
+      const d = s.docs.find((x) => x.id === id);
+      if (!d) return s;
+      const userId = auth.user?.id ?? "anon";
+      const next = !d.starred;
+      return {
+        ...s,
+        docs: s.docs.map((x) => (x.id === id ? { ...x, starred: next } : x)),
+        activities: [{ id: uid(), at: Date.now(), userId, kind: next ? "star" : "unstar", docId: id, docName: d.name }, ...s.activities],
+      };
+    });
+  }, [auth.user?.id]);
+
+  const starDocs = useCallback((ids: string[], starred: boolean) => {
+    setState((s) => ({ ...s, docs: s.docs.map((x) => (ids.includes(x.id) ? { ...x, starred } : x)) }));
+  }, []);
+
   const updateDoc = useCallback((id: string, patch: Partial<Doc>) => {
     setState((s) => ({ ...s, docs: s.docs.map((d) => (d.id === id ? { ...d, ...patch } : d)) }));
   }, []);
+
+  const updateProfile = useCallback((patch: Partial<Pick<User, "name" | "email" | "avatar">>) => {
+    if (!auth.user) return;
+    const userId = auth.user.id;
+    setState((s) => ({
+      ...s,
+      users: s.users.map((u) => (u.id === userId ? { ...u, ...patch } : u)),
+      activities: [{ id: uid(), at: Date.now(), userId, kind: "profile-update" }, ...s.activities],
+    }));
+    setAuth((a) => (a.user ? { ...a, user: { ...a.user, ...patch } } : a));
+  }, [auth.user]);
+
 
   const toggleDocCategory = useCallback((docId: string, catId: string) => {
     setState((s) => {
@@ -419,7 +525,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     login, register, logout, addDoc, removeDoc, updateDoc, toggleDocCategory,
     addCategory, removeCategory, addVersion, restoreVersion, bumpView, recordOpen,
     createShareLink, removeShareLink, shareWithUsers, unshareUser,
-  }), [auth, state, login, register, logout, addDoc, removeDoc, updateDoc, toggleDocCategory, addCategory, removeCategory, addVersion, restoreVersion, bumpView, recordOpen, createShareLink, removeShareLink, shareWithUsers, unshareUser]);
+    trashDoc, trashDocs, restoreDoc, purgeDoc, emptyTrash, toggleStar, starDocs, updateProfile,
+  }), [auth, state, login, register, logout, addDoc, removeDoc, updateDoc, toggleDocCategory, addCategory, removeCategory, addVersion, restoreVersion, bumpView, recordOpen, createShareLink, removeShareLink, shareWithUsers, unshareUser, trashDoc, trashDocs, restoreDoc, purgeDoc, emptyTrash, toggleStar, starDocs, updateProfile]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

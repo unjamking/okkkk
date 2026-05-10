@@ -11,7 +11,7 @@ export const Route = createFileRoute("/app/dashboard")({
 
 function Dashboard() {
   const { docs, auth } = useStore();
-  const myDocs = docs.filter((d) => d.ownerId === auth.user?.id);
+  const myDocs = docs.filter((d) => d.ownerId === auth.user?.id && !d.trashedAt);
   const total = myDocs.length;
   const totalSize = myDocs.reduce((s, d) => s + d.size, 0);
   const recent = [...myDocs].sort((a, b) => b.uploadedAt - a.uploadedAt).slice(0, 5);

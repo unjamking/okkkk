@@ -5,7 +5,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Activity as ActivityIcon, Upload, Trash2, Eye, Share2, Link2, History,
-  RotateCcw, Tag, LogIn, UserPlus, FolderOpen,
+  RotateCcw, Tag, LogIn, UserPlus, FolderOpen, Star, RefreshCw, Flame, UserCog,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { useState, useMemo } from "react";
@@ -21,6 +21,8 @@ const ICONS: Record<ActivityKind, React.ComponentType<{ className?: string }>> =
   "share-link-create": Link2, "share-link-revoke": Link2,
   "version-save": History, "version-restore": RotateCcw,
   "category-change": Tag, login: LogIn, register: UserPlus,
+  star: Star, unstar: Star, trash: Trash2, restore: RefreshCw, purge: Flame,
+  "profile-update": UserCog,
 };
 
 const LABELS: Record<ActivityKind, string> = {
@@ -29,6 +31,8 @@ const LABELS: Record<ActivityKind, string> = {
   "share-link-create": "Created link", "share-link-revoke": "Revoked link",
   "version-save": "New version", "version-restore": "Restored version",
   "category-change": "Category", login: "Signed in", register: "Created account",
+  star: "Starred", unstar: "Unstarred", trash: "Moved to trash",
+  restore: "Restored", purge: "Permanently deleted", "profile-update": "Updated profile",
 };
 
 const TONE: Record<ActivityKind, string> = {
@@ -38,6 +42,9 @@ const TONE: Record<ActivityKind, string> = {
   "share-link-create": "text-chart-4", "share-link-revoke": "text-chart-4",
   "version-save": "text-chart-5", "version-restore": "text-chart-5",
   "category-change": "text-primary", login: "text-muted-foreground", register: "text-muted-foreground",
+  star: "text-chart-4", unstar: "text-muted-foreground",
+  trash: "text-destructive", restore: "text-chart-1", purge: "text-destructive",
+  "profile-update": "text-primary",
 };
 
 function ActivityPage() {

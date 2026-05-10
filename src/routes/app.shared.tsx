@@ -19,7 +19,7 @@ function SharedPage() {
   const [tab, setTab] = useState("by-me");
   const [selected, setSelected] = useState<Doc | null>(null);
 
-  const sharedByMe = docs.filter((d) => d.ownerId === auth.user?.id && (d.sharedUserIds.length > 0 || d.shareLinks.length > 0));
+  const sharedByMe = docs.filter((d) => d.ownerId === auth.user?.id && !d.trashedAt && (d.sharedUserIds.length > 0 || d.shareLinks.length > 0));
   const sharedWithMe = docs.filter((d) => d.ownerId !== auth.user?.id && d.sharedUserIds.includes(auth.user?.id ?? ""));
   const list = tab === "by-me" ? sharedByMe : sharedWithMe;
 
